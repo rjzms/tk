@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>我的专属刷题库</title>
+    <style>
+        :root { --primary: #42b883; --secondary: #35495e; --bg-body: #f0f2f5; --bg-card: #ffffff; --success: #67c23a; --danger: #f56c6c; --sidebar-w: 300px; }
+        * { box-sizing: border-box; outline: none; }
+        body { margin: 0; background: var(--bg-body); font-family: sans-serif; height: 100vh; display: flex; overflow: hidden; color: #2c3e50; }
+        .sidebar { width: var(--sidebar-w); background: #fff; border-right: 1px solid #e4e7ed; display: flex; flex-direction: column; z-index: 10; }
+        .brand-area { padding: 20px; background: var(--secondary); color: white; font-weight: bold; }
+        .grid-container { flex: 1; overflow-y: auto; padding: 15px; display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; align-content: start; }
+        .grid-item { height: 36px; display: flex; justify-content: center; align-items: center; background: #f9fafc; border: 1px solid #ebeef5; cursor: pointer; border-radius: 4px; font-size: 0.8rem; }
+        .grid-item:hover { border-color: var(--primary); color: var(--primary); }
+        .grid-item.current { background: var(--secondary); color: white; }
+        .grid-item.done-ok { background: #f0f9eb; color: var(--success); border-color: #e1f3d8; }
+        .grid-item.done-err { background: #fef0f0; color: var(--danger); border-color: #fde2e2; }
+        .main-area { flex: 1; display: flex; flex-direction: column; }
+        .scroll-wrapper { flex: 1; overflow-y: auto; padding: 40px; display: flex; justify-content: center; }
+        .card { background: var(--bg-card); width: 100%; max-width: 900px; padding: 40px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+        .q-body { font-size: 1.3rem; font-weight: 600; margin-bottom: 30px; line-height: 1.6; }
+        .opt-btn { padding: 15px; margin-bottom: 10px; background: #fcfcfc; border: 2px solid #ebeef5; border-radius: 8px; cursor: pointer; display: flex; }
+        .opt-btn:hover { border-color: var(--primary); }
+        .opt-btn.correct { background: #f0f9eb; border-color: var(--success); color: #166534; }
+        .opt-btn.wrong { background: #fef0f0; border-color: var(--danger); color: #991b1b; }
+        .opt-key { font-weight: bold; margin-right: 10px; }
+        .control-bar { padding: 15px 40px; background: #fff; border-top: 1px solid #e4e7ed; display: flex; justify-content: space-between; }
+        .btn-nav { padding: 10px 24px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; }
+        .btn-prev { background: #f4f4f5; }
+        .btn-next { background: var(--primary); color: white; }
+        .tag { padding: 4px 12px; border-radius: 20px; font-size: 0.85rem; background: #e3fcf0; color: #166534; margin-bottom: 15px; display: inline-block; }
+        .explain-box { margin-top: 20px; padding: 15px; background: #fff8e6; color: #8a6d3b; border-radius: 6px; display: none; }
+        
+        /* 加载动画 */
+        #loading { position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(255,255,255,0.9); display: flex; justify-content: center; align-items: center; z-index: 999; flex-direction: column;}
+        .spinner { width: 40px; height: 40px; border: 4px solid #f3f3f3; border-top: 4px solid var(--primary); border-radius: 50%; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        /* 手机端适配 */
+        @media (max-width: 768px) {
+            .sidebar { display: none; } /* 手机端隐藏侧边栏 */
+            .scroll-wrapper { padding: 15px; }
+            .card { padding: 20px; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="loading">
+        <div class="spinner"></div>
+        <p style="margin-top:15px;color:#666;">正在加载题库...</p>
+    </div>
+
+    <aside class="sidebar">
+        <div class="brand-area">刷题 Pro (网站版)</div>
+        <div class="grid-container" id="grid-box"></div>
+        <div style="padding:10px;text-align:center;border-top:1px solid #eee;">
+            <button onclick="resetData()" style="border:none;background:none;color:#999;cursor:pointer;text-decoration:underline;">重置进度</button>
+        </div>
+    </aside>
+
+    <main class="main-area">
+        <div class="scroll-wrapper">
+            <div id="card-area" class="card"></div>
+        </div>
+        <div class="control-bar">
+            <button class="btn-nav btn-prev" onclick="nav(-1)">上一题</button>
+            <button class="btn-nav btn-next" onclick="nav(1)">下一题</button>
+        </div>
+    </main>
+
+<script>
+// --- 核心逻辑 ---
+let fullDB = []; // 题库数据将通过 fetch 加载
+let state = { idx: 0, mistakes: [], corrects: [] };
+const storeKey = 'my_quiz_web_v1';
+
+// 初始化
+async function init() {
+    try {
+        // 1. 读取本地进度
+        const saved = localStorage.getItem(storeKey);
+        if (saved) state = JSON.parse(saved);
+
+        // 2. 关键步骤：从 JSON 文件加载题目
+        const response = await fetch('questions.json?t=' + new Date().getTime());
+        if (!response.ok) throw new Error("无法读取 questions.json 文件");
+        fullDB = await response.json();
+
+        // 3. 渲染页面
+        document.getElementById('loading').style.display = 'none';
+        if(state.idx >= fullDB.length) state.idx = 0;
+        renderCard();
+        renderGrid();
+
+    } catch (e) {
+        document.getElementById('loading').innerHTML = `<p style="color:red;padding:20px;text-align:center;">❌ 加载失败<br>请确保 questions.json 文件存在且格式正确。<br>错误信息: ${e.message}</p>`;
+    }
+}
+
+// 渲染卡片
+function renderCard() {
+    if(!fullDB.length) return;
+    const q = fullDB[state.idx];
+    const card = document.getElementById('card-area');
+    
+    let html = `
+        <div><span class="tag">${q.type}</span> <span style="float:right;color:#999;">${state.idx+1}/${fullDB.length}</span></div>
+        <div class="q-body">${state.idx+1}. ${q.q}</div>
+    `;
+
+    // 渲染选项 (仅支持单选/判断的简化逻辑)
+    if(q.opts) {
+        Object.entries(q.opts).forEach(([k, v]) => {
+            html += `<div class="opt-btn" onclick="check('${k}', this)">
+                <span class="opt-key">${k}.</span> ${v}
+            </div>`;
+        });
+    } else if (q.type === '判断题') {
+        ['对', '错'].forEach(k => {
+            html += `<div class="opt-btn" onclick="check('${k}', this)">
+                <span class="opt-key"></span> ${k}
+            </div>`;
+        });
+    }
+
+    // 解析区
+    html += `<div id="explain" class="explain-box">
+        <strong>结果：</strong><span id="res-txt"></span><br>
+        <strong>解析：</strong>${q.desc || '暂无解析'}
+    </div>`;
+
+    card.innerHTML = html;
+}
+
+// 判分逻辑
+function check(userVal, el) {
+    if(el.parentElement.classList.contains('locked')) return;
+    el.parentElement.classList.add('locked');
+    
+    const q = fullDB[state.idx];
+    const isRight = userVal === q.a;
+    const explain = document.getElementById('explain');
+    
+    if(isRight) {
+        el.classList.add('correct');
+        explain.style.display = 'block';
+        document.getElementById('res-txt').innerHTML = '<span style="color:#67c23a">回答正确 ✅</span>';
+        if(!state.corrects.includes(q.id)) state.corrects.push(q.id);
+    } else {
+        el.classList.add('wrong');
+        explain.style.display = 'block';
+        document.getElementById('res-txt').innerHTML = '<span style="color:#f56c6c">回答错误 ❌ 正确答案是：'+q.a+'</span>';
+        // 标出正确答案
+        const opts = document.querySelectorAll('.opt-btn');
+        opts.forEach(opt => {
+            if(opt.innerText.includes(q.a) || opt.innerText.trim() === q.a) opt.classList.add('correct');
+        });
+        if(!state.mistakes.includes(q.id)) state.mistakes.push(q.id);
+    }
+    save();
+    renderGrid();
+}
+
+function nav(step) {
+    const next = state.idx + step;
+    if(next >= 0 && next < fullDB.length) {
+        state.idx = next;
+        renderCard();
+        renderGrid();
+        save();
+    }
+}
+
+function renderGrid() {
+    const grid = document.getElementById('grid-box');
+    grid.innerHTML = fullDB.map((q, i) => {
+        let cls = 'grid-item';
+        if(i === state.idx) cls += ' current';
+        else if(state.corrects.includes(q.id)) cls += ' done-ok';
+        else if(state.mistakes.includes(q.id)) cls += ' done-err';
+        return `<div class="${cls}" onclick="state.idx=${i};renderCard();renderGrid();">${i+1}</div>`;
+    }).join('');
+}
+
+function save() { localStorage.setItem(storeKey, JSON.stringify(state)); }
+function resetData() { localStorage.removeItem(storeKey); location.reload(); }
+
+init();
+</script>
+</body>
+</html>
