@@ -32,7 +32,7 @@
             overflow: hidden;
         }
 
-        /* --- 左侧侧边栏 --- */
+        /* --- 左侧侧边栏 (完美还原) --- */
         .sidebar {
             width: var(--sidebar-w);
             background: #fff;
@@ -335,7 +335,10 @@
     <main class="main-area">
         <div class="scroll-wrapper">
             <div id="card-area" class="card">
-                <div style="text-align:center;padding:50px;color:#999;">正在加载题库...</div>
+                <div style="text-align:center;padding:50px;color:#999;">
+                    <div style="font-size:2rem;margin-bottom:20px;">⏳</div>
+                    正在加载题库，请稍候...
+                </div>
             </div>
         </div>
 
@@ -402,7 +405,11 @@ async function init() {
         changeMode(state.mode);
 
     } catch (e) {
-        dom.cardArea.innerHTML = `<div style="text-align:center;padding:50px;color:red;">❌ 题库加载失败<br>请确保 questions.json 文件在同一目录下。<br>${e.message}</div>`;
+        dom.cardArea.innerHTML = `<div style="text-align:center;padding:50px;color:red;">
+            <h2>❌ 题库加载失败</h2>
+            <p>请确保 <b>questions.json</b> 文件存在，并且已经一起上传到了 GitHub。</p>
+            <p>错误详情: ${e.message}</p>
+        </div>`;
         dom.statInfo.innerText = "加载失败";
     }
 }
